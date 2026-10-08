@@ -8,14 +8,54 @@
 import SwiftUI
 
 struct ContentView: View {
+    @State private var text = ""
+    @State private var pdfURL: URL?
+    @State private var errorMessage: String?
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        NavigationStack {
+            VStack(spacing: 16) {
+                TextEditor(text: $text)
+                    .padding(8)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(.secondary.opacity(0.4))
+                    }
+
+                Button("Create PDF", action: createPDF)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(text.isEmpty)
+
+                if let pdfURL {
+                    ShareLink("Share PDF", item: pdfURL)
+                }
+            }
+            .padding()
+            .navigationTitle("StudyNotes")
+            // The PDF on disk no longer matches the text, so hide the share link.
+            .onChange(of: text) { _ in
+                pdfURL = nil
+            }
+            .alert(
+                "Could not create PDF",
+                isPresented: Binding(
+                    get: { errorMessage != nil },
+                    set: { if !$0 { errorMessage = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(errorMessage ?? "")
+            }
         }
-        .padding()
+    }
+
+    private func createPDF() {
+        do {
+            pdfURL = try PDFGenerator().writePDF(from: text)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 
