@@ -9,8 +9,12 @@ on:
 jobs:
   build-and-test:
     runs-on: macos-15
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Show available Xcode and simulators
         run: |
@@ -34,3 +38,11 @@ jobs:
         with:
           name: TestResults
           path: StudyNotes/TestResults.xcresult
+
+      - name: Convert coverage to Sonar format
+        run: |
+          bash scripts/xccov-to-sonarqube-generic.sh StudyNotes/TestResults.xcresult > sonarqube-generic-coverage.xml
+
+      - name: SonarQube Cloud scan
+        if: env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarqube-scan-action@c7ee0f9df90b7aa20e8dcf9695dcfe2e7da5b4f2 # v7.2.1
