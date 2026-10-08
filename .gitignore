@@ -4,3 +4,7 @@ DerivedData/
 build/
 *.xcuserstate
 *.xcresult
+
+.claude/settings.local.json
+CLAUDE.local.md
+
