@@ -2,4 +2,12 @@
 xcuserdata/
 DerivedData/
 build/
+.vscode/
 *.xcuserstate
+*.xcresult
+sonarqube-generic-coverage.xml
+.scannerwork/
+
+.claude/settings.local.json
+CLAUDE.local.md
+
