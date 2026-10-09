@@ -43,7 +43,10 @@ struct ContentView: View {
                     set: { if !$0 { errorMessage = nil } }
                 )
             ) {
-                Button("OK", role: .cancel) {}
+                Button("OK", role: .cancel) {
+                    // Intentionally empty: SwiftUI dismisses the alert after any button
+                    // tap, and the `isPresented` setter above clears `errorMessage`.
+                }
             } message: {
                 Text(errorMessage ?? "")
             }
