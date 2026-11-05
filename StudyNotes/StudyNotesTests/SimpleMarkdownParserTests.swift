@@ -252,4 +252,47 @@ struct SimpleMarkdownParserTests {
     @Test func inlineCodeSpanInParagraph() {
         #expect(parser.parse("call `foo()`") == [.paragraph([.text("call "), .inlineCode("foo()")])])
     }
+
+    // MARK: - Formula blocks
+
+    @Test func doubleDollarSignLineProducesFormulaBlock() {
+        #expect(parser.parse("$$E = mc^2$$") == [.formula(latex: "E = mc^2")])
+    }
+
+    @Test func formulaLatexContentIsTrimmed() {
+        #expect(parser.parse("$$  E = mc^2  $$") == [.formula(latex: "E = mc^2")])
+    }
+
+    @Test func emptyDoubleDollarIsAParagraph() {
+        // `$$$$` has no content between the delimiters — treated as plain text.
+        #expect(parser.parse("$$$$") == [.paragraph([.text("$$$$")])])
+    }
+
+    @Test func singleDollarIsNotAFormula() {
+        // Inline `$...$` is not supported at the block level.
+        #expect(parser.parse("$E = mc^2$") == [.paragraph([.text("$E = mc^2$")])])
+    }
+
+    @Test func formulaSeparatedFromSurroundingBlocksByBlankLines() {
+        let blocks = parser.parse("# Physics\n\n$$E = mc^2$$\n\nSee above.")
+        #expect(blocks == [
+            .heading(level: 1, spans: [.text("Physics")]),
+            .formula(latex: "E = mc^2"),
+            .paragraph([.text("See above.")]),
+        ])
+    }
+
+    @Test func formulaNextToOtherBlocksWithoutBlankLine() {
+        let blocks = parser.parse("intro\n$$x^2$$\n# After")
+        #expect(blocks == [
+            .paragraph([.text("intro")]),
+            .formula(latex: "x^2"),
+            .heading(level: 1, spans: [.text("After")]),
+        ])
+    }
+
+    @Test func cyrillicFormulaLabel() {
+        // A formula can contain arbitrary LaTeX — the parser does not validate its content.
+        #expect(parser.parse("$$\\text{Привет}$$") == [.formula(latex: "\\text{Привет}")])
+    }
 }

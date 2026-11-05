@@ -4,6 +4,7 @@
 //
 
 import UIKit
+import SwiftMath
 
 /// Turns a parsed note into a paginated A4 PDF document.
 struct PDFGenerator {
@@ -100,6 +101,17 @@ struct PDFGenerator {
                               background: Self.codeBackground)
 
         case .formula(let latex):
+            let formulaSize = max(bodyFontSize * 1.5, 15)
+            let mathImage = MTMathImage(latex: latex,
+                                        fontSize: formulaSize,
+                                        textColor: Self.textColor,
+                                        labelMode: .display,
+                                        textAlignment: .center)
+            let (_, image) = mathImage.asImage()
+            if let image {
+                return makeFormulaString(image: image)
+            }
+            // Fallback: SwiftMath could not parse the LaTeX — draw it as raw text.
             return makeString("$$\(latex)$$", font: italicFont(ofSize: bodyFontSize))
         }
     }
@@ -182,6 +194,41 @@ struct PDFGenerator {
                 .paragraphStyle: style,
             ]))
         }
+        return result
+    }
+
+    // MARK: - Formula rendering
+
+    /// Wraps a rendered formula image in an NSTextAttachment, centered, with block spacing.
+    private func makeFormulaString(image: UIImage) -> NSAttributedString {
+        let attachment = NSTextAttachment()
+        // Scale down if the image is wider than the text area; keep aspect ratio.
+        let maxWidth = pageSize.width - 2 * margin
+        if image.size.width > maxWidth {
+            let scale = maxWidth / image.size.width
+            attachment.bounds = CGRect(x: 0, y: 0,
+                                       width: maxWidth,
+                                       height: (image.size.height * scale).rounded())
+        } else {
+            attachment.bounds = CGRect(origin: .zero, size: image.size)
+        }
+        attachment.image = image
+
+        let style = NSMutableParagraphStyle()
+        style.paragraphSpacing = Self.blockSpacing
+        style.alignment = .center
+
+        let result = NSMutableAttributedString()
+        // The attachment occupies one invisible character (NSAttachmentCharacter).
+        let attachStr = NSMutableAttributedString(attachment: attachment)
+        attachStr.addAttribute(.paragraphStyle, value: style,
+                                range: NSRange(location: 0, length: attachStr.length))
+        result.append(attachStr)
+        result.append(NSAttributedString(string: "\n", attributes: [
+            .paragraphStyle: style,
+            .font: UIFont.systemFont(ofSize: bodyFontSize),
+            .foregroundColor: Self.textColor,
+        ]))
         return result
     }
 

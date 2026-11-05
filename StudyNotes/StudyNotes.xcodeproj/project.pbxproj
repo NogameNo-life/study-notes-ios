@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		9D92E655309C558700A7AD84 /* SwiftMath in Frameworks */ = {isa = PBXBuildFile; productRef = 9D92E654309C558700A7AD84 /* SwiftMath */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		9D323A73306A9E6400D52780 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -39,6 +43,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9D92E655309C558700A7AD84 /* SwiftMath in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -57,6 +62,7 @@
 			children = (
 				9D323A5F306A96BA00D52780 /* StudyNotes */,
 				9D323A70306A9E6400D52780 /* StudyNotesTests */,
+				9D92E653309C558700A7AD84 /* Frameworks */,
 				9D323A5E306A96BA00D52780 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -68,6 +74,13 @@
 				9D323A6F306A9E6400D52780 /* StudyNotesTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		9D92E653309C558700A7AD84 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -90,6 +103,7 @@
 			);
 			name = StudyNotes;
 			packageProductDependencies = (
+				9D92E654309C558700A7AD84 /* SwiftMath */,
 			);
 			productName = StudyNotes;
 			productReference = 9D323A5D306A96BA00D52780 /* StudyNotes.app */;
@@ -146,6 +160,9 @@
 			);
 			mainGroup = 9D323A54306A96BA00D52780;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				9D92E652309C518A00A7AD84 /* XCRemoteSwiftPackageReference "SwiftMath" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 9D323A5E306A96BA00D52780 /* Products */;
 			projectDirPath = "";
@@ -345,12 +362,15 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.ys.StudyNotes;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -378,12 +398,15 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.ys.StudyNotes;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -462,6 +485,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		9D92E652309C518A00A7AD84 /* XCRemoteSwiftPackageReference "SwiftMath" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/mgriebling/SwiftMath";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.7.3;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		9D92E654309C558700A7AD84 /* SwiftMath */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9D92E652309C518A00A7AD84 /* XCRemoteSwiftPackageReference "SwiftMath" */;
+			productName = SwiftMath;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 9D323A55306A96BA00D52780 /* Project object */;
 }

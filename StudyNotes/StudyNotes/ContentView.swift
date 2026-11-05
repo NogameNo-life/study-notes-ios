@@ -24,6 +24,23 @@ private struct PDFFile: Transferable {
     }
 }
 
+// Wraps the typed markdown text as a .md file for sharing.
+// The text is already markdown — no conversion needed.
+private struct MarkdownFile: Transferable {
+    let text: String
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(contentType: .plainText) { file in
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("StudyNotes.md")
+            try file.text.write(to: url, atomically: true, encoding: .utf8)
+            return SentTransferredFile(url)
+        } importing: { received in
+            Self(text: try String(contentsOf: received.file, encoding: .utf8))
+        }
+    }
+}
+
 struct ContentView: View {
     @State private var text = ""
     @State private var pdfFile: PDFFile?
@@ -39,9 +56,18 @@ struct ContentView: View {
                             .stroke(.secondary.opacity(0.4))
                     }
 
-                Button("Create PDF", action: createPDF)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(text.isEmpty)
+                HStack(spacing: 12) {
+                    Button("Create PDF", action: createPDF)
+                        .buttonStyle(.borderedProminent)
+
+                    ShareLink(
+                        "Share .md",
+                        item: MarkdownFile(text: text),
+                        preview: SharePreview("StudyNotes.md")
+                    )
+                    .buttonStyle(.bordered)
+                }
+                .disabled(text.isEmpty)
 
                 if let pdfFile {
                     ShareLink("Share PDF", item: pdfFile, preview: SharePreview("StudyNotes.pdf"))

@@ -100,12 +100,14 @@ struct PDFGeneratorTests {
         #expect(PDFDocument(data: data)?.string?.contains("let x = 42") == true)
     }
 
-    @Test func formulaDrawsRawLatexText() throws {
+    @Test func formulaRendersAsImage() throws {
+        // The formula is rendered by SwiftMath into a UIImage embedded as a PDF attachment,
+        // so the PDF's text layer won't contain the LaTeX string.
         let data = PDFGenerator().makeData(from: [.formula(latex: "E=mc^2")])
-
-        let text = try #require(PDFDocument(data: data)?.string)
-        #expect(text.contains("E=mc^2"))
-        #expect(text.contains("$$"))
+        let doc = try #require(PDFDocument(data: data))
+        #expect(doc.pageCount == 1)
+        // An image-bearing PDF is larger than a text-only empty page.
+        #expect(data.count > 5000)
     }
 
     // MARK: - Inline span rendering

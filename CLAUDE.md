@@ -58,10 +58,16 @@ State as of 2026-11-05 (check before relying on it):
 - `InlineSpan` enum holds the styled runs; `NoteBlock` text-bearing cases carry `[InlineSpan]`.
 - Code blocks use `.backgroundColor` (NSTextBlock is AppKit-only, not available on iOS).
 - `PDFGenerator.bodyFontSize` and `.margin` are configurable; heading sizes scale from body size.
-- 51 Swift Testing tests (parser and PDF generator) pass.
+- **SwiftMath** is added as a package dependency. `$$...$$` on its own line is parsed as
+  `.formula(latex:)` and rendered as a `UIImage` via `MTMathImage.asImage()`, embedded with
+  `NSTextAttachment` centered in the PDF. Invalid LaTeX falls back to raw `$$...$$` text.
+- 58 Swift Testing tests (parser and PDF generator) pass.
 
-Not built yet: notes list and storage, folders and tags, `.md` export, formula rendering
-  (SwiftMath or similar — decision needed), search, adaptive layout, AI.
+- `.md` export via `ShareLink` with `FileRepresentation(contentType: .plainText)` writing a
+  `StudyNotes.md` temp file. The "Share .md" button appears in an `HStack` with "Create PDF"
+  and is disabled when the editor is empty.
+
+Not built yet: notes list and storage, folders and tags, search, adaptive layout, AI.
 
 ## Layout
 

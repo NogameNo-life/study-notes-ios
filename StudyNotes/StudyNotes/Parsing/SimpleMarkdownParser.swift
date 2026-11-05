@@ -17,6 +17,7 @@ nonisolated struct SimpleMarkdownParser: NoteParser {
         case heading(level: Int, text: String)
         case bullet(String)
         case numbered(String)
+        case formula(String)
         case text(String)
     }
 
@@ -62,6 +63,10 @@ nonisolated struct SimpleMarkdownParser: NoteParser {
             case .fence:
                 closeCurrent()
                 codeLines = []
+
+            case .formula(let latex):
+                closeCurrent()
+                blocks.append(.formula(latex: latex))
 
             case .heading(let level, let text):
                 closeCurrent()
@@ -165,6 +170,7 @@ nonisolated struct SimpleMarkdownParser: NoteParser {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty { return .blank }
         if line.hasPrefix(Self.fence) { return .fence }
+        if let latex = formulaLatex(in: line) { return .formula(latex) }
         if let heading = heading(in: line) {
             return .heading(level: heading.level, text: heading.text)
         }
@@ -173,6 +179,14 @@ nonisolated struct SimpleMarkdownParser: NoteParser {
         }
         if let item = numberedItem(in: line) { return .numbered(item) }
         return .text(trimmed)
+    }
+
+    /// Returns the LaTeX content of a `$$...$$` display-formula line, or nil.
+    /// Requires non-empty content between the delimiters.
+    private func formulaLatex(in line: String) -> String? {
+        guard line.hasPrefix("$$"), line.hasSuffix("$$"), line.count > 4 else { return nil }
+        let content = line.dropFirst(2).dropLast(2).trimmingCharacters(in: .whitespaces)
+        return content.isEmpty ? nil : content
     }
 
     private func heading(in line: String) -> (level: Int, text: String)? {
