@@ -4,23 +4,21 @@
 //
 
 import UIKit
+import SwiftMath
 
-/// Turns plain text into a paginated PDF document.
+/// Turns a parsed note into a paginated A4 PDF document.
 struct PDFGenerator {
     /// A4 is 210 × 297 mm. PDF measures in points (1/72 inch), which gives 595.2 × 841.8.
     static let a4PageSize = CGSize(width: 595.2, height: 841.8)
 
     var pageSize = PDFGenerator.a4PageSize
     var margin: CGFloat = 50
-    var font = UIFont.systemFont(ofSize: 12)
+    /// Base font size for body text. Heading sizes scale relative to this value (×2, ×1.67, ×1.33).
+    var bodyFontSize: CGFloat = 12
 
-    /// Renders `text` into PDF data, adding pages until all of the text fits.
-    func makeData(from text: String) -> Data {
-        // Fixed black text: the default label color would turn white in dark mode.
-        let storage = NSTextStorage(
-            string: text,
-            attributes: [.font: font, .foregroundColor: UIColor.black]
-        )
+    func makeData(from blocks: [NoteBlock]) -> Data {
+        let attributed = buildAttributedString(from: blocks)
+        let storage = NSTextStorage(attributedString: attributed)
         let layoutManager = NSLayoutManager()
         storage.addLayoutManager(layoutManager)
 
@@ -29,8 +27,6 @@ struct PDFGenerator {
             height: pageSize.height - 2 * margin
         )
 
-        // One text container per page. The layout manager fills them in order,
-        // so we keep adding containers until the last one holds the final glyph.
         var containers: [NSTextContainer] = []
         var laidOutGlyphs = 0
         repeat {
@@ -38,9 +34,7 @@ struct PDFGenerator {
             container.lineFragmentPadding = 0
             layoutManager.addTextContainer(container)
             containers.append(container)
-
             let range = layoutManager.glyphRange(for: container)
-            // Nothing fits in a page (e.g. margins larger than the page): stop instead of looping forever.
             if range.length == 0 { break }
             laidOutGlyphs = NSMaxRange(range)
         } while laidOutGlyphs < layoutManager.numberOfGlyphs
@@ -57,14 +51,229 @@ struct PDFGenerator {
         }
     }
 
-    /// Writes the PDF for `text` into `directory` and returns the file's URL.
     func writePDF(
-        from text: String,
+        from blocks: [NoteBlock],
         named fileName: String = "StudyNotes.pdf",
         in directory: URL = FileManager.default.temporaryDirectory
     ) throws -> URL {
         let url = directory.appendingPathComponent(fileName)
-        try makeData(from: text).write(to: url, options: .atomic)
+        try makeData(from: blocks).write(to: url, options: .atomic)
         return url
+    }
+
+    // MARK: - Fixed colors (never dynamic — PDF must look identical in light and dark mode)
+
+    private static let textColor = UIColor.black
+    private static let codeBackground = UIColor(white: 0.94, alpha: 1)
+    private static let blockSpacing: CGFloat = 12
+
+    // MARK: - Block rendering
+
+    private func buildAttributedString(from blocks: [NoteBlock]) -> NSAttributedString {
+        let result = NSMutableAttributedString()
+        for block in blocks { result.append(attributedString(for: block)) }
+        return result
+    }
+
+    private func attributedString(for block: NoteBlock) -> NSAttributedString {
+        switch block {
+        case .heading(let level, let spans):
+            return makeInlineString(spans,
+                                    fontSize: headingFontSize(level: level),
+                                    baseBold: true,
+                                    paragraphStyle: defaultStyle())
+
+        case .paragraph(let spans):
+            return makeInlineString(spans,
+                                    fontSize: bodyFontSize,
+                                    baseBold: false,
+                                    paragraphStyle: defaultStyle())
+
+        case .bulletList(let items):
+            return makeListString(items: items, markerFor: { _ in "• " }, indent: 15)
+
+        case .numberedList(let items):
+            return makeListString(items: items, markerFor: { "\($0 + 1). " }, indent: 20)
+
+        case .codeBlock(let code):
+            return makeString(code,
+                              font: .monospacedSystemFont(ofSize: max(bodyFontSize - 1, 8), weight: .regular),
+                              background: Self.codeBackground)
+
+        case .formula(let latex):
+            let formulaSize = max(bodyFontSize * 1.5, 15)
+            let mathImage = MTMathImage(latex: latex,
+                                        fontSize: formulaSize,
+                                        textColor: Self.textColor,
+                                        labelMode: .display,
+                                        textAlignment: .center)
+            let (_, image) = mathImage.asImage()
+            if let image {
+                return makeFormulaString(image: image)
+            }
+            // Fallback: SwiftMath could not parse the LaTeX — draw it as raw text.
+            return makeString("$$\(latex)$$", font: italicFont(ofSize: bodyFontSize))
+        }
+    }
+
+    // MARK: - Inline span rendering
+
+    private func makeInlineString(
+        _ spans: [InlineSpan],
+        fontSize: CGFloat,
+        baseBold: Bool,
+        paragraphStyle: NSMutableParagraphStyle
+    ) -> NSAttributedString {
+        let result = NSMutableAttributedString()
+        for span in spans {
+            var attrs: [NSAttributedString.Key: Any] = [
+                .font: spanFont(span, size: fontSize, baseBold: baseBold),
+                .foregroundColor: Self.textColor,
+                .paragraphStyle: paragraphStyle,
+            ]
+            if case .inlineCode = span { attrs[.backgroundColor] = Self.codeBackground }
+            result.append(NSAttributedString(string: span.rawText, attributes: attrs))
+        }
+        result.append(NSAttributedString(string: "\n", attributes: [
+            .font: UIFont.systemFont(ofSize: fontSize),
+            .foregroundColor: Self.textColor,
+            .paragraphStyle: paragraphStyle,
+        ]))
+        return result
+    }
+
+    private func spanFont(_ span: InlineSpan, size: CGFloat, baseBold: Bool) -> UIFont {
+        switch span {
+        case .text:
+            return baseBold ? .boldSystemFont(ofSize: size) : .systemFont(ofSize: size)
+        case .bold:
+            return .boldSystemFont(ofSize: size)
+        case .italic:
+            return italicFont(ofSize: size)
+        case .boldItalic:
+            return boldItalicFont(ofSize: size)
+        case .inlineCode:
+            return .monospacedSystemFont(ofSize: max(size - 1, 8), weight: baseBold ? .semibold : .regular)
+        }
+    }
+
+    // MARK: - List rendering
+
+    private func makeListString(
+        items: [[InlineSpan]],
+        markerFor: (Int) -> String,
+        indent: CGFloat
+    ) -> NSAttributedString {
+        let result = NSMutableAttributedString()
+        for (i, item) in items.enumerated() {
+            let isLast = i == items.count - 1
+            let style = NSMutableParagraphStyle()
+            style.headIndent = indent
+            style.paragraphSpacing = isLast ? Self.blockSpacing : 4
+
+            result.append(NSAttributedString(
+                string: markerFor(i),
+                attributes: [
+                    .font: UIFont.systemFont(ofSize: bodyFontSize),
+                    .foregroundColor: Self.textColor,
+                    .paragraphStyle: style,
+                ]
+            ))
+            for span in item {
+                var attrs: [NSAttributedString.Key: Any] = [
+                    .font: spanFont(span, size: bodyFontSize, baseBold: false),
+                    .foregroundColor: Self.textColor,
+                    .paragraphStyle: style,
+                ]
+                if case .inlineCode = span { attrs[.backgroundColor] = Self.codeBackground }
+                result.append(NSAttributedString(string: span.rawText, attributes: attrs))
+            }
+            result.append(NSAttributedString(string: "\n", attributes: [
+                .font: UIFont.systemFont(ofSize: bodyFontSize),
+                .foregroundColor: Self.textColor,
+                .paragraphStyle: style,
+            ]))
+        }
+        return result
+    }
+
+    // MARK: - Formula rendering
+
+    /// Wraps a rendered formula image in an NSTextAttachment, centered, with block spacing.
+    private func makeFormulaString(image: UIImage) -> NSAttributedString {
+        let attachment = NSTextAttachment()
+        // Scale down if the image is wider than the text area; keep aspect ratio.
+        let maxWidth = pageSize.width - 2 * margin
+        if image.size.width > maxWidth {
+            let scale = maxWidth / image.size.width
+            attachment.bounds = CGRect(x: 0, y: 0,
+                                       width: maxWidth,
+                                       height: (image.size.height * scale).rounded())
+        } else {
+            attachment.bounds = CGRect(origin: .zero, size: image.size)
+        }
+        attachment.image = image
+
+        let style = NSMutableParagraphStyle()
+        style.paragraphSpacing = Self.blockSpacing
+        style.alignment = .center
+
+        let result = NSMutableAttributedString()
+        // The attachment occupies one invisible character (NSAttachmentCharacter).
+        let attachStr = NSMutableAttributedString(attachment: attachment)
+        attachStr.addAttribute(.paragraphStyle, value: style,
+                                range: NSRange(location: 0, length: attachStr.length))
+        result.append(attachStr)
+        result.append(NSAttributedString(string: "\n", attributes: [
+            .paragraphStyle: style,
+            .font: UIFont.systemFont(ofSize: bodyFontSize),
+            .foregroundColor: Self.textColor,
+        ]))
+        return result
+    }
+
+    // MARK: - Plain string rendering (code blocks, formulas)
+
+    private func makeString(_ text: String, font: UIFont, background: UIColor? = nil) -> NSAttributedString {
+        let style = defaultStyle()
+        var attrs: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: Self.textColor,
+            .paragraphStyle: style,
+        ]
+        if let bg = background { attrs[.backgroundColor] = bg }
+        return NSAttributedString(string: text + "\n", attributes: attrs)
+    }
+
+    // MARK: - Helpers
+
+    private func headingFontSize(level: Int) -> CGFloat {
+        switch level {
+        case 1: return bodyFontSize * 2
+        case 2: return (bodyFontSize * 5 / 3).rounded()
+        default: return (bodyFontSize * 4 / 3).rounded()
+        }
+    }
+
+    private func defaultStyle() -> NSMutableParagraphStyle {
+        let s = NSMutableParagraphStyle()
+        s.paragraphSpacing = Self.blockSpacing
+        return s
+    }
+
+    private func italicFont(ofSize size: CGFloat) -> UIFont {
+        let base = UIFont.systemFont(ofSize: size)
+        if let d = base.fontDescriptor.withSymbolicTraits(.traitItalic) {
+            return UIFont(descriptor: d, size: size)
+        }
+        return base
+    }
+
+    private func boldItalicFont(ofSize size: CGFloat) -> UIFont {
+        let base = UIFont.boldSystemFont(ofSize: size)
+        if let d = base.fontDescriptor.withSymbolicTraits([.traitBold, .traitItalic]) {
+            return UIFont(descriptor: d, size: size)
+        }
+        return base
     }
 }
