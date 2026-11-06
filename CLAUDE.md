@@ -5,19 +5,33 @@ Read it fully at the start of every session.
 
 ## Goals
 
-StudyNotes is an iOS app for writing beautiful notes fast, so a student does not waste time
-formatting after lessons, or rewriting text into markdown, or struggling to type math formulas.
+StudyNotes is a universal iOS note app for writing beautiful notes fast, so the user does not
+waste time formatting afterwards, or rewriting text into markdown, or struggling to type
+formulas and code.
+
+The first audience is programmers and engineers: code blocks with syntax highlighting, formulas,
+tables, and diagrams. Other audiences (students, lawyers, biologists, and so on) come later
+through new block types and formatting profiles. They never come through separate apps or
+separate document types.
 
 Product principles:
 - Typing speed comes first. The user types once, in markdown, and never reformats later.
 - Auto-formatting is optional. The user can configure it or turn it off. The default is minimal.
-- Math formulas must be fast to enter (LaTeX syntax first, shortcuts and snippets later)
-  and rendered in the preview and in the PDF (SwiftMath is a candidate, decide with the developer).
+- Extensible core: markdown plus block types selected by fenced-block tags
+  (for example ```python, ```chart, ```diagram). Each block type is a parser rule plus a renderer
+  for screen and PDF. Adding a new block type must not require changes to unrelated code.
+- Math formulas are fast to enter (LaTeX syntax first, shortcuts and snippets later) and rendered
+  in the preview and in the PDF (SwiftMath is used).
+- Live markdown preview next to the editor (side by side on large screens).
+- Formatting profiles (presets such as "Lecture notes" or "Design doc") instead of separate
+  document types.
 - Notes are saved inside the app and organized with folders and tags. They can be exported
   to the device as PDF (main output) and `.md` files.
 - Core value: find information in notes quickly, without scrolling through many pages.
-- Devices: iPhone, iPad, and iPhone Duo (foldable, iOS 27). Layouts must be adaptive.
-  Never assume a fixed screen size, and never lose the typed text when the layout changes.
+- Devices: iPhone, iPad, iPhone Duo (foldable, iOS 27), and Mac. Layouts are adaptive and never
+  assume a fixed screen size. The typed text is never lost when the layout changes.
+  The Mac approach is undecided (Mac Catalyst is the leading candidate). Until it is decided,
+  do not add AppKit code and do not break UIKit-based code.
 
 Learning goal: the developer builds this app to learn Swift and app design.
 Working code is not enough. Understanding it is the goal.
@@ -27,47 +41,125 @@ Working code is not enough. Understanding it is the goal.
 AI is the LAST feature. Do not start a later step before the earlier ones are merged,
 and do not add work from a later step to an earlier task.
 
-1. Formatting and generating: render the PDF from `[NoteBlock]` (headings, lists, code),
-   inline bold/italic, user-configurable formatting options, math formulas.
-2. Export: `.md` file export (the typed text is already markdown).
-3. Adaptive layout: iPhone, iPad, iPhone Duo (`NavigationSplitView` or equivalent).
-4. Saving: storage with folders and tags behind a `NoteRepository` protocol.
-5. Search, in levels: (a) full-text search with highlights and jump-to-location,
+1. Formatting and generating. Done: PDF from `[NoteBlock]`, inline bold/italic/code,
+   `$$...$$` formulas. Remaining: formatting settings in the UI and formatting profiles,
+   inline `$...$` formulas.
+2. Export: `.md` file export. Done.
+3. **Current task: start page with fake data** (see "Navigation and design"). It uses an
+   in-memory repository behind the `NoteRepository` protocol. No real storage yet.
+4. Block types, code first: keep the fence language tag (`.codeBlock(language:text:)`), syntax
+   highlighting, then tables, charts from data (Swift Charts, check PDF export first), and
+   diagrams from text (an experiment: check feasibility before promising).
+5. Live markdown preview and adaptive layout: one `NavigationSplitView` layout for iPhone, iPad,
+   iPhone Duo, and Mac. The start page becomes the sidebar.
+6. Saving: real storage with folders and tags, replacing the in-memory repository.
+7. Search, in levels: (a) full-text search with highlights and jump-to-location,
    (b) keyword cards that show the matching passages with their source note,
    (c) an outline built from each note's headings. Search sits behind a `NoteSearcher` protocol.
    It must ignore case and handle Russian word forms.
-6. AI (last): ask questions about the user's notes and get answers based on them
+8. AI (last): ask questions about the user's notes and get answers based on them
    (semantic search with embeddings, then answers from the found passages). See "AI rules".
 
 The roadmap can change. Record changes in `docs/decisions.md`.
+
+## Navigation and design
+
+Decisions for the start page (record them in `docs/decisions.md`):
+- The app opens to the start page (Home), not to the editor.
+- Layout, top to bottom: title "Notes" with search and settings buttons, a "new note" button in the
+  top-right toolbar, a "Recent" section, and a "Folders" section.
+- "New note" button: a compose icon in the top-right toolbar, with the accessibility label
+  "New note" and the shortcut Cmd+N. It opens the existing editor with an empty note and the
+  keyboard ready. The note is stored in the Inbox folder only if the user types something.
+  An empty note is never created.
+- "New folder": a text button in the Folders section. It must look different from the "new note"
+  button, so the two actions are not confused.
+- Folders are flat (no nesting) for now. The **Inbox** folder always exists and cannot be deleted.
+- Recent shows the last 5 edited notes across all folders.
+- The empty state is designed on purpose: no notes and only Inbox. Show a short hint and the
+  "New folder" button.
+- Search and settings buttons are placeholders until their steps (no screens yet).
+- `HomeView` is self-contained, so it can become the sidebar of a `NavigationSplitView` later.
+- Inspiration is the structure of GitHub's apps (a list-based home on the phone, a sidebar with
+  columns on a big screen). Never copy their logo, colors, icons, or visual style.
+
+Wireframe (phone):
+
+```
++--------------------------------+
+| Notes                Q  (o) [+]|   Q = search, (o) = settings, [+] = new note
+|                                |
+| Recent                         |
+|   Binary trees         Today   |
+|   Docker cheatsheet    Mon     |
+|   Lab 3: circuits      Sun     |
+|                                |
+| Folders           New folder   |
+|   Algorithms            12  >  |
+|   Electronics            7  >  |
+|   Inbox                  3  >  |
++--------------------------------+
+```
+
+UI rules:
+- System components first (`List`, `NavigationStack`, SF Symbols). Follow Apple's Human Interface
+  Guidelines.
+- Support Dynamic Type, dark mode, and VoiceOver labels.
+- Build screens with fake data first and add Xcode Previews for the empty state and a state with
+  data. Check iPhone, iPad, and landscape.
+- Show a plan before building a screen. Change only the screen being designed.
 
 ## Project state
 
 Verify this section against the code at the start of a task, and update it at the end of
 every task. If it is wrong, say so.
 
-State as of 2026-11-05 (check before relying on it):
-- `TextEditor` for note input in `ContentView` (one screen, no notes list yet).
+State as of 2026-11-06 (check before relying on it):
+- **App root is `HomeView`** (NavigationStack). `ContentView` remains as a standalone editor
+  scaffold but is no longer the entry point.
 - Pipeline works: `SimpleMarkdownParser` → `[NoteBlock]` → `PDFGenerator` → A4 PDF.
-- PDF is shared via `ShareLink` with `FileRepresentation(contentType: .pdf)` so Quick Look
-  and "Save to Files" appear in the share sheet.
-- Supported block syntax: headings (levels 1–3), paragraphs, bullet lists (`-`, `*`),
-  numbered lists, fenced code blocks. `.formula(latex:)` draws raw LaTeX as a placeholder.
+- Sharing: the PDF goes through `ShareLink` with `FileRepresentation(contentType: .pdf)` so Quick
+  Look and "Save to Files" appear in the share sheet. The `.md` export uses
+  `FileRepresentation(contentType: .plainText)` and writes a `StudyNotes.md` temp file. The
+  "Share .md" button sits next to "Create PDF" and is disabled when the editor is empty.
+- Supported block syntax: headings (levels 1-3), paragraphs, bullet lists (`-`, `*`), numbered
+  lists, fenced code blocks. Text after the opening fence is currently ignored, so the language
+  tag is not stored yet.
 - Inline markup inside any block: `**bold**`, `*italic*`, `***bold-italic***`, `` `code` ``.
-  Unmatched markers are kept as plain text.
-- `InlineSpan` enum holds the styled runs; `NoteBlock` text-bearing cases carry `[InlineSpan]`.
-- Code blocks use `.backgroundColor` (NSTextBlock is AppKit-only, not available on iOS).
-- `PDFGenerator.bodyFontSize` and `.margin` are configurable; heading sizes scale from body size.
-- **SwiftMath** is added as a package dependency. `$$...$$` on its own line is parsed as
-  `.formula(latex:)` and rendered as a `UIImage` via `MTMathImage.asImage()`, embedded with
-  `NSTextAttachment` centered in the PDF. Invalid LaTeX falls back to raw `$$...$$` text.
+  Unmatched markers are kept as plain text. `InlineSpan` holds the styled runs, and text-bearing
+  `NoteBlock` cases carry `[InlineSpan]`.
+- Formulas: `$$...$$` on its own line is parsed as `.formula(latex:)` and rendered by SwiftMath
+  (`MTMathImage.asImage()`) as an image embedded with `NSTextAttachment`, centered in the PDF.
+  Invalid LaTeX falls back to the raw `$$...$$` text. Inline `$...$` is not supported yet.
+- Code blocks use `.backgroundColor` (`NSTextBlock` is AppKit-only, not available on iOS).
+- `PDFGenerator.bodyFontSize` and `.margin` are configurable in code (no UI yet). Heading sizes
+  scale from the body size.
 - 58 Swift Testing tests (parser and PDF generator) pass.
 
-- `.md` export via `ShareLink` with `FileRepresentation(contentType: .plainText)` writing a
-  `StudyNotes.md` temp file. The "Share .md" button appears in an `HStack` with "Create PDF"
-  and is disabled when the editor is empty.
+To verify: formula images are bitmaps, so check that they stay sharp when the PDF is zoomed.
+SwiftMath support for chemistry notation (such as `\ce{}`) is unverified. Check before promising it.
 
-Not built yet: notes list and storage, folders and tags, search, adaptive layout, AI.
+- **Start page (step 3):** `HomeView` with `NavigationStack`. Shows last 5 edited notes
+  ("Recent") and all folders with counts ("Folders"). Compose button (top-right toolbar,
+  `square.and.pencil`, `Cmd+N`) and search/settings placeholder buttons. "New folder" text
+  button in the Folders section header.
+- **Models:** `Note` (id, text, folderId, dates; `title` computed from first line) and
+  `Folder` (id, name, isInbox). Both plain structs (`nonisolated`, `Sendable`).
+- **Storage layer:** `NoteRepository` protocol + `InMemoryNoteRepository` (class, holds data
+  in dictionaries). `InMemoryNoteRepository.withSampleData()` has 7 notes in Cyrillic and
+  English and 3 folders including a long Cyrillic folder name.
+- **`HomeViewModel`:** `ObservableObject`, `@MainActor`. `nonisolated init` to allow use as
+  a default parameter value; callers must call `refresh()` after construction (views via
+  `.onAppear`, tests explicitly).
+- **`NoteEditorView`:** editor pushed from `HomeView`'s NavigationStack; no own NavigationStack;
+  saves via `.onDisappear { onSave(text) }`. Keyboard focus on appear via `@FocusState`.
+- **`HomeDestination` enum:** `Hashable`, two cases: `.newNote` and `.existingNote(Note)`.
+  Used as the typed path element for `NavigationStack(path:)`.
+- 68 Swift Testing tests pass (10 new HomeViewModel tests).
+- `docs/decisions.md` created with start-page decision entries.
+
+Not built yet: notes list and storage, folders and tags, search, live preview,
+adaptive layout, block types other than code and formula, formatting profiles, AI.
 
 ## Layout
 
@@ -76,7 +168,7 @@ commands run from there (CI sets `working-directory: StudyNotes`).
 
 - `StudyNotes/StudyNotes/` — app target sources and asset catalog
 - `StudyNotes/StudyNotesTests/` — unit test target (hosted in the app via `TEST_HOST`)
-- `docs/decisions.md` — decision log
+- `docs/decisions.md` — decision log (create it if it does not exist)
 - `scripts/` — CI helper scripts
 
 Both target folders are file-system-synchronized groups (`PBXFileSystemSynchronizedRootGroup`,
@@ -84,7 +176,8 @@ project `objectVersion = 77`): files added to or removed from these directories 
 up automatically. Do not edit `project.pbxproj` to register new source files.
 
 Folders: `Models/`, `Parsing/`, and later `Rendering/`, `Views/`, `ViewModels/`, `Storage/`, `Search/`.
-There are no Swift package dependencies, no linter, and no formatter configured.
+The only Swift package dependency is SwiftMath (approved by the developer). No linter and no
+formatter are configured.
 
 ## Commands
 
@@ -113,7 +206,8 @@ If the `iPhone 16` simulator is not installed locally, pick one from
 
 - **Deployment target is iOS 16.6** for both targets (the project-level value is overridden
   per target). APIs newer than 16.6 need `if #available` / `@available` guards. This rules out
-  unguarded `@Observable`, SwiftData, and iOS 17+ `NavigationStack`/`NavigationSplitView` additions.
+  unguarded `@Observable`, SwiftData, and iOS 17+ additions to navigation. `NavigationStack` and
+  `NavigationSplitView` themselves exist in iOS 16, but check any option you are not sure about.
   The developer may raise the target to iOS 17 for SwiftData. That is a decision for the
   "Saving" step: propose it with trade-offs, and do not change the target on your own.
 - **App target uses `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`** with
@@ -128,11 +222,17 @@ If the `iPhone 16` simulator is not installed locally, pick one from
 Pipeline: text input → `NoteParser` → `[NoteBlock]` (AST) → renderer → screen / PDF.
 
 - `NoteParser` is a protocol. `SimpleMarkdownParser` exists. Math-aware parsers come later.
-- `NoteBlock` is an enum with a reserved `.formula(latex:)` case.
-- The PDF renderer and the on-screen renderer both consume `[NoteBlock]`.
+- `NoteBlock` is an enum. Text-bearing cases carry `[InlineSpan]`. `.formula(latex:)` is rendered
+  with SwiftMath.
+- The PDF renderer and the on-screen renderer (live preview) both consume `[NoteBlock]`.
   Never parse text and draw into a PDF context in one function.
+- A new block type (chart, diagram, and so on) is a new `NoteBlock` case or a tagged code block,
+  plus a parser rule and a renderer for screen and PDF. Do not scatter special cases through
+  unrelated code.
 - Hide each replaceable part behind a protocol: `NoteParser`, `NoteRepository` (storage),
-  `NoteSearcher` (search), `NoteAssistant` (AI, last).
+  `NoteSearcher` (search), `NoteAssistant` (AI, last). Views never talk to a concrete storage type.
+- `Note` and `Folder` are plain structs (value types). View models are `ObservableObject`s that
+  hold UI logic in testable code.
 - No backend for now. Everything runs on the device.
 
 ## Code conventions
@@ -140,8 +240,8 @@ Pipeline: text input → `NoteParser` → `[NoteBlock]` (AST) → renderer → s
 - Prefer `struct` and protocols over class inheritance.
 - SwiftUI only, unless a UIKit API is required (for example `UIGraphicsPDFRenderer`).
 - Use `ObservableObject` while the target is iOS 16.6.
-- Parsing, search, and other logic must be pure and unit-testable. Add Swift Testing tests for
-  every change in them, including Cyrillic input and edge cases.
+- Parsing, search, and view-model logic must be pure and unit-testable. Add Swift Testing tests
+  for every change in them, including Cyrillic input and edge cases.
 - The PDF must look the same in light and dark mode: use fixed colors, never dynamic system
   colors (`.label`, `systemGray`, and so on), in the PDF renderer.
 - State that holds the user's text lives above any view whose layout changes (rotation, split
@@ -184,7 +284,8 @@ SonarQube Cloud scan. It needs `sonar-project.properties`,
 `scripts/xccov-to-sonarqube-generic.sh`, and the `SONAR_TOKEN` secret. A CodeQL workflow
 may also exist. Check the workflow files for the current Xcode version and simulator, and do not
 assume them. Keep `*.xcresult` and generated Sonar files in `.gitignore`. The runner's Xcode must
-support the SDK that the project uses. A build that passes locally can still fail in CI.
+support the SDK that the project uses, and CI must be able to resolve the SwiftMath package.
+A build that passes locally can still fail in CI.
 
 ## AI rules (for the last roadmap step)
 
