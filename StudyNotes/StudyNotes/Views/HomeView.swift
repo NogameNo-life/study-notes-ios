@@ -23,6 +23,7 @@ struct HomeView: View {
     @State private var editPath: [HomeDestination] = []
     @State private var showNewFolderAlert = false
     @State private var newFolderName = ""
+    @State private var showDocTypeSheet = false
 
     /// Initialiser accepts an optional pre-built view model for Xcode Previews and tests.
     /// _viewModel = StateObject(wrappedValue:) is the standard pattern for injecting a
@@ -52,10 +53,13 @@ struct HomeView: View {
             /// For every HomeDestination value pushed onto editPath, SwiftUI calls this closure
             /// to build the destination view — type-safe, no stringly-typed segue identifiers.
             .navigationDestination(for: HomeDestination.self) { destination in
-                NoteEditorView(destination: destination) { text in
-                    viewModel.commitEdit(text: text, destination: destination)
+                NoteEditorView(destination: destination) { name, text in
+                    viewModel.commitEdit(name: name, text: text, destination: destination)
                 }
             }
+        }
+        .sheet(isPresented: $showDocTypeSheet) {
+            docTypeSheet
         }
         .alert("New Folder", isPresented: $showNewFolderAlert) {
             TextField("Name", text: $newFolderName)
@@ -173,17 +177,104 @@ struct HomeView: View {
             }
             .accessibilityLabel("Settings")
 
-            /// Compose button: accessibility label + Cmd+N keyboard shortcut.
+            /// Compose button: shows the "New Document" type picker.
             /// .keyboardShortcut works with hardware keyboards and Mac Catalyst (step 5).
-            /// On iPhone with no keyboard it has no visible effect but is good practice.
             Button {
-                editPath.append(.newNote)
+                showDocTypeSheet = true
             } label: {
                 Image(systemName: "square.and.pencil")
             }
             .accessibilityLabel("New note")
             .keyboardShortcut("n", modifiers: .command)
         }
+    }
+
+    // MARK: - New document sheet
+
+    /// Half-sheet with a 3-column grid of document types.
+    /// "Note" is available now. "Chart" and "Diagram" arrive in step 4.
+    private var docTypeSheet: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("What would you like to create?")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                    .padding(.bottom, 16)
+
+                // 3-column grid — same layout as the Math Notes reference screenshot.
+                // Note and Markdown open the same editor for now. They will diverge in
+                // step 4/5 when formatting profiles are added: Note gets a document
+                // profile (PDF-first), Markdown gets a plain profile (.md-first).
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3),
+                    spacing: 12
+                ) {
+                    docTypeCard(title: "Note",     icon: "doc.text",                        color: .blue,   isAvailable: true) {
+                        showDocTypeSheet = false
+                        editPath.append(.newNote(type: .pdf, defaultName: "PDF note"))
+                    }
+                    docTypeCard(title: "Markdown", icon: "chevron.left.forwardslash.chevron.right", color: .purple, isAvailable: true) {
+                        showDocTypeSheet = false
+                        editPath.append(.newNote(type: .markdown, defaultName: "Markdown note"))
+                    }
+                    docTypeCard(title: "Chart",    icon: "chart.bar.fill",                  color: .green,  isAvailable: false, action: {})
+                }
+                .padding(.horizontal)
+
+                Spacer()
+            }
+            .navigationTitle("New Document")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showDocTypeSheet = false }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    /// One card in the document-type grid.
+    /// Unavailable types show a "Soon" badge and cannot be tapped.
+    @ViewBuilder
+    private func docTypeCard(
+        title: String,
+        icon: String,
+        color: Color,
+        isAvailable: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                ZStack(alignment: .topTrailing) {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(isAvailable ? color.opacity(0.12) : Color.secondary.opacity(0.1))
+                        .frame(height: 72)
+                        .overlay {
+                            Image(systemName: icon)
+                                .font(.title2)
+                                .foregroundColor(isAvailable ? color : .secondary)
+                        }
+                    if !isAvailable {
+                        Text("Soon")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .background(Color.secondary)
+                            .cornerRadius(4)
+                            .padding(4)
+                    }
+                }
+                Text(title)
+                    .font(.caption)
+                    .foregroundColor(isAvailable ? .primary : .secondary)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(!isAvailable)
     }
 
     // MARK: - Helpers

@@ -12,14 +12,21 @@ import Foundation
 /// The repository stores the canonical copy; views receive their own copies via @Published arrays.
 nonisolated struct Note: Identifiable, Equatable, Hashable, Sendable {
     let id: UUID
+    /// Explicit display name set by the user. nil means derive the title from the first text line.
+    var name: String? = nil
+    /// Document class — controls which editor UI and export format are shown.
+    var noteType: NoteType = .pdf
     var text: String
     var folderId: UUID
     let createdAt: Date
     var modifiedAt: Date
 
-    /// Display title: the first non-blank line of text with leading '#' markers stripped.
-    /// Computed so it always matches the content — no title/text sync bugs.
+    /// Display title: explicit name when set; otherwise the first non-blank line of text
+    /// with leading '#' markers stripped; falls back to "Untitled".
     var title: String {
+        if let name = name, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return name
+        }
         let raw = text
             .split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: true)
             .first

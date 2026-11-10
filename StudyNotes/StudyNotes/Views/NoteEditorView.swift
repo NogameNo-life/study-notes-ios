@@ -7,19 +7,7 @@ import SwiftUI
 import CoreTransferable
 import UniformTypeIdentifiers
 
-// These two Transferable wrappers are duplicated from ContentView.swift.
-// When ContentView is eventually retired they will be the canonical copies.
-
-private struct PDFFile: Transferable {
-    let url: URL
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(contentType: .pdf) { file in
-            SentTransferredFile(file.url)
-        } importing: { received in
-            Self(url: received.file)
-        }
-    }
-}
+// MARK: - Transferable wrappers
 
 private struct MarkdownFile: Transferable {
     let text: String
@@ -35,82 +23,104 @@ private struct MarkdownFile: Transferable {
     }
 }
 
+// MARK: - Editor mode (Markdown notes only)
+
+private enum EditorMode: String, CaseIterable {
+    case edit    = "Edit"
+    case preview = "Preview"
+}
+
+// MARK: - View
+
 /// The note editor pushed from HomeView.
 ///
-/// This view has no NavigationStack of its own — it is always pushed by HomeView's stack.
-/// When the user taps Back, .onDisappear fires and the final text is handed to onSave.
+/// Layout changes based on note type:
+/// - PDF note (.pdf):      title field → editor.  Toolbar: [↑ share] [▶ play].
+///   ▶ generates the PDF, saves it to the app's Documents folder, and shows a preview sheet.
+/// - Markdown note (.markdown): title field → Edit/Preview picker → editor or preview.
+///   Toolbar: [↑ share .md menu].
+///
+/// The view has no NavigationStack of its own — it is always pushed by HomeView's stack.
 struct NoteEditorView: View {
 
     let destination: HomeDestination
-    /// Called with the editor's final text when the view disappears.
-    /// HomeViewModel decides whether to save or discard based on content and destination.
-    let onSave: (String) -> Void
+    let onSave: (String, String) -> Void
 
     @State private var text: String
-    @State private var pdfFile: PDFFile?
+    @State private var noteName: String
+    private let noteType: NoteType
+
+    @State private var mode: EditorMode = .edit
+    /// URL of the last generated PDF. Set on generation, cleared when text changes.
+    @State private var pdfURL: URL?
+    @State private var showPDFPreview = false
     @State private var errorMessage: String?
 
-    /// @FocusState is a property wrapper that lets SwiftUI control keyboard focus.
-    /// Setting editorFocused = true in .onAppear below shows the keyboard immediately —
-    /// equivalent to calling becomeFirstResponder() in UIKit.
-    @FocusState private var editorFocused: Bool
+    private enum FocusField { case title, content }
+    @FocusState private var focusedField: FocusField?
 
-    init(destination: HomeDestination, onSave: @escaping (String) -> Void) {
+    init(destination: HomeDestination, onSave: @escaping (String, String) -> Void) {
         self.destination = destination
         self.onSave = onSave
-        // @State must be initialised with _property = State(wrappedValue:) when the
-        // initial value comes from a parameter. Using State(wrappedValue:) directly in
-        // init() is the standard Swift pattern — analogous to field initialisation in Java.
         switch destination {
-        case .newNote:
-            _text = State(wrappedValue: "")
+        case .newNote(let type, let defaultName):
+            _text     = State(wrappedValue: "")
+            _noteName = State(wrappedValue: defaultName)
+            noteType  = type
         case .existingNote(let note):
-            _text = State(wrappedValue: note.text)
-        }
-    }
-
-    private var navigationTitle: String {
-        switch destination {
-        case .newNote:               return "New Note"
-        case .existingNote(let note): return note.title
+            _text     = State(wrappedValue: note.text)
+            _noteName = State(wrappedValue: note.name ?? "")
+            noteType  = note.noteType
         }
     }
 
     var body: some View {
-        VStack(spacing: 16) {
-            TextEditor(text: $text)
-                .padding(8)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(.secondary.opacity(0.4))
+        VStack(spacing: 0) {
+            TextField("Title", text: $noteName)
+                .font(.title2.bold())
+                .focused($focusedField, equals: .title)
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+                .accessibilityLabel("Note title")
+
+            Divider()
+
+            // Segmented control is only meaningful for Markdown notes.
+            // PDF notes show only the editor — the preview IS the PDF.
+            if noteType == .markdown {
+                Picker("Mode", selection: $mode) {
+                    ForEach(EditorMode.allCases, id: \.self) { m in
+                        Text(m.rawValue).tag(m)
+                    }
                 }
-                .focused($editorFocused)
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+                .padding(.vertical, 8)
 
-            HStack(spacing: 12) {
-                Button("Create PDF", action: createPDF)
-                    .buttonStyle(.borderedProminent)
-
-                ShareLink(
-                    "Share .md",
-                    item: MarkdownFile(text: text),
-                    preview: SharePreview("StudyNotes.md")
-                )
-                .buttonStyle(.bordered)
+                Divider()
             }
-            .disabled(text.isEmpty)
 
-            if let pdfFile {
-                ShareLink("Share PDF", item: pdfFile, preview: SharePreview("StudyNotes.pdf"))
+            contentView
+        }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { toolbarContent }
+        .sheet(isPresented: $showPDFPreview) {
+            if let url = pdfURL {
+                PDFSheetView(url: url)
             }
         }
-        .padding()
-        .navigationTitle(navigationTitle)
-        .navigationBarTitleDisplayMode(.inline)
-        .onChange(of: text) { _ in pdfFile = nil }
-        .onAppear { editorFocused = true }
-        // .onDisappear fires when the view is popped from the NavigationStack.
-        // At this point @State text still holds the final edited value — save it.
-        .onDisappear { onSave(text) }
+        // Any edit invalidates the cached PDF — the user must regenerate.
+        .onChange(of: text) { _ in pdfURL = nil }
+        .onAppear {
+            // New notes start focused on the title so the user can confirm or change it.
+            // Existing notes go straight to content (title was already set).
+            switch destination {
+            case .newNote:      focusedField = .title
+            case .existingNote: focusedField = .content
+            }
+        }
+        .onDisappear { onSave(noteName, text) }
         .alert(
             "Could not create PDF",
             isPresented: Binding(
@@ -124,12 +134,119 @@ struct NoteEditorView: View {
         }
     }
 
-    private func createPDF() {
+    // MARK: - Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItemGroup(placement: .navigationBarTrailing) {
+            if noteType == .pdf {
+                // Share button appears only after a PDF has been generated.
+                if let url = pdfURL {
+                    ShareLink(item: url) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                }
+                // Play button: generate PDF → save to Documents → show preview.
+                Button(action: generateAndShowPDF) {
+                    Image(systemName: "play.fill")
+                }
+                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityLabel("Generate PDF")
+            } else {
+                // Markdown note: share .md file or export to PDF.
+                Menu {
+                    ShareLink(
+                        "Share Markdown",
+                        item: MarkdownFile(text: text),
+                        preview: SharePreview("Note.md")
+                    )
+                    Divider()
+                    if let url = pdfURL {
+                        ShareLink("Share PDF", item: url)
+                    } else {
+                        Button("Generate PDF", action: generateAndShowPDF)
+                    }
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .disabled(
+                    text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                    noteName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
+            }
+        }
+    }
+
+    // MARK: - Content
+
+    @ViewBuilder
+    private var contentView: some View {
+        if noteType == .pdf || mode == .edit {
+            TextEditor(text: $text)
+                .padding(8)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(.secondary.opacity(0.4))
+                }
+                .focused($focusedField, equals: .content)
+                .padding()
+        } else {
+            NotePreviewView(blocks: SimpleMarkdownParser().parse(text))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    // MARK: - PDF generation
+
+    /// Generates a PDF, saves it to the app's Documents folder, and opens the preview sheet.
+    /// Used by the ▶ play button on PDF notes.
+    ///
+    /// Why Documents instead of tmp? Files in tmp can be purged by the OS at any time.
+    /// Documents is the stable sandbox location — the same file is overwritten on each
+    /// regeneration, keeping only the latest version.
+    private func generateAndShowPDF() {
+        generatePDF(showPreview: true)
+    }
+
+    private func generatePDF(showPreview: Bool) {
         let blocks = SimpleMarkdownParser().parse(text)
+        let title = noteName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fileName = title.isEmpty ? "Note" : title
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         do {
-            pdfFile = PDFFile(url: try PDFGenerator().writePDF(from: blocks))
+            pdfURL = try PDFGenerator().writePDF(from: blocks, named: "\(fileName).pdf", in: docs)
+            if showPreview { showPDFPreview = true }
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+// MARK: - Previews
+
+#Preview("New PDF note") {
+    NavigationStack {
+        NoteEditorView(destination: .newNote(type: .pdf, defaultName: "PDF note")) { _, _ in }
+    }
+}
+
+#Preview("New Markdown note") {
+    NavigationStack {
+        NoteEditorView(destination: .newNote(type: .markdown, defaultName: "Markdown note")) { _, _ in }
+    }
+}
+
+#Preview("Existing Markdown note") {
+    var note = Note(
+        id: UUID(),
+        text: "# Binary Trees\n\nA **binary tree** has *at most* two children per node.\n\n- Insert\n- Delete\n- Search\n\n$$h = \\log_2(n)$$",
+        folderId: UUID(),
+        createdAt: Date(),
+        modifiedAt: Date()
+    )
+    note.name = "Binary Trees"
+    note.noteType = .markdown
+    return NavigationStack {
+        NoteEditorView(destination: .existingNote(note)) { _, _ in }
     }
 }

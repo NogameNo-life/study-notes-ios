@@ -84,7 +84,7 @@ extension InMemoryNoteRepository {
         for (text, folderId, daysAgo) in samples {
             let modified = now.addingTimeInterval(-daysAgo * 86_400)
             let created  = modified.addingTimeInterval(-3_600)
-            let note = Note(id: UUID(), text: text, folderId: folderId,
+            let note = Note(id: UUID(), noteType: .markdown, text: text, folderId: folderId,
                             createdAt: created, modifiedAt: modified)
             repo.saveNote(note)
         }

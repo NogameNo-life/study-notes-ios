@@ -55,7 +55,7 @@ struct HomeViewModelTests {
         let vm = HomeViewModel(repository: repo)
 
         // commitEdit calls refresh() internally, so no explicit call needed here.
-        vm.commitEdit(text: "   \n  ", destination: .newNote)
+        vm.commitEdit(name: "", text: "   \n  ", destination: .newNote(type: .pdf, defaultName: ""))
 
         #expect(repo.allNotes().isEmpty)
     }
@@ -64,7 +64,7 @@ struct HomeViewModelTests {
         let repo = InMemoryNoteRepository()
         let vm = HomeViewModel(repository: repo)
 
-        vm.commitEdit(text: "# Hello world", destination: .newNote)
+        vm.commitEdit(name: "", text: "# Hello world", destination: .newNote(type: .pdf, defaultName: ""))
 
         let notes = repo.allNotes()
         #expect(notes.count == 1)
@@ -79,10 +79,46 @@ struct HomeViewModelTests {
         repo.saveNote(original)
         let vm = HomeViewModel(repository: repo)
 
-        vm.commitEdit(text: "# Updated", destination: .existingNote(original))
+        vm.commitEdit(name: "", text: "# Updated", destination: .existingNote(original))
 
         let saved = repo.allNotes().first
         #expect(saved?.text == "# Updated")
+    }
+
+    @Test func explicitNameIsStoredOnNewNote() {
+        let repo = InMemoryNoteRepository()
+        let vm = HomeViewModel(repository: repo)
+
+        vm.commitEdit(name: "My Note", text: "Some content", destination: .newNote(type: .pdf, defaultName: ""))
+
+        #expect(repo.allNotes().first?.name == "My Note")
+        #expect(repo.allNotes().first?.title == "My Note")
+    }
+
+    @Test func clearingNameFallsBackToFirstLine() {
+        let repo = InMemoryNoteRepository()
+        let inbox = repo.inboxFolder()
+        var note = Note(id: UUID(), text: "# Algorithms", folderId: inbox.id,
+                        createdAt: Date(), modifiedAt: Date())
+        note.name = "Old name"
+        repo.saveNote(note)
+        let vm = HomeViewModel(repository: repo)
+
+        // Saving with an empty name clears the explicit name; title comes from first line.
+        vm.commitEdit(name: "  ", text: "# Algorithms", destination: .existingNote(note))
+
+        #expect(repo.allNotes().first?.name == nil)
+        #expect(repo.allNotes().first?.title == "Algorithms")
+    }
+
+    @Test func newNoteWithOnlyNameAndEmptyTextIsSaved() {
+        let repo = InMemoryNoteRepository()
+        let vm = HomeViewModel(repository: repo)
+
+        vm.commitEdit(name: "Quick idea", text: "", destination: .newNote(type: .pdf, defaultName: ""))
+
+        #expect(repo.allNotes().count == 1)
+        #expect(repo.allNotes().first?.title == "Quick idea")
     }
 
     // MARK: - Folders

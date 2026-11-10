@@ -12,7 +12,8 @@ import Combine
 /// the stack uses the value as a dictionary key to find the right destination view.
 /// In Java terms this is a sealed interface; in C++ it is a std::variant.
 enum HomeDestination: Hashable {
-    case newNote
+    /// A blank note of the given type pre-filled with a default title.
+    case newNote(type: NoteType, defaultName: String)
     case existingNote(Note)  // Note is Hashable via its id
 }
 
@@ -64,26 +65,28 @@ final class HomeViewModel: ObservableObject {
 
     // MARK: - Write
 
-    /// Save the text that the editor produced back to the repository.
+    /// Save the name and text the editor produced back to the repository.
     ///
-    /// - `.newNote`: creates a note in Inbox only when text is non-empty.
-    ///   An empty note is never created.
-    /// - `.existingNote`: updates the note if text is non-empty; silently ignores empty text
-    ///   (a future step can add "delete if emptied" behaviour).
-    func commitEdit(text: String, destination: HomeDestination) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// - `.newNote`: creates a note in Inbox only when name or text is non-empty.
+    ///   A completely empty note is never created.
+    /// - `.existingNote`: updates the note if text is non-empty.
+    func commitEdit(name: String, text: String, destination: HomeDestination) {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         switch destination {
-        case .newNote:
-            guard !trimmed.isEmpty else { return }
+        case .newNote(let type, _):
+            guard !trimmedText.isEmpty || !trimmedName.isEmpty else { return }
             let inbox = repository.inboxFolder()
             let now = Date()
-            let note = Note(id: UUID(), text: text, folderId: inbox.id,
+            var note = Note(id: UUID(), noteType: type, text: text, folderId: inbox.id,
                             createdAt: now, modifiedAt: now)
+            note.name = trimmedName.isEmpty ? nil : trimmedName
             repository.saveNote(note)
 
         case .existingNote(var note):
-            guard !trimmed.isEmpty else { return }
+            guard !trimmedText.isEmpty else { return }
             note.text = text
+            note.name = trimmedName.isEmpty ? nil : trimmedName
             note.modifiedAt = Date()
             repository.saveNote(note)
         }
