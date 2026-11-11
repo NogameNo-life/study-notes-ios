@@ -11,7 +11,9 @@ import SwiftUI
 struct StudyNotesApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            // HomeView owns its own NavigationStack and serves as the app's root.
+            // ContentView remains in the project as a standalone editor scaffold.
+            HomeView()
         }
     }
 }
