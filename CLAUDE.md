@@ -114,27 +114,32 @@ UI rules:
 Verify this section against the code at the start of a task, and update it at the end of
 every task. If it is wrong, say so.
 
-State as of 2026-11-06 (check before relying on it):
+State as of 2026-11-11 (check before relying on it):
 - **App root is `HomeView`** (NavigationStack). `ContentView` remains as a standalone editor
   scaffold but is no longer the entry point.
 - Pipeline works: `SimpleMarkdownParser` → `[NoteBlock]` → `PDFGenerator` → A4 PDF.
 - Sharing: the PDF goes through `ShareLink` with `FileRepresentation(contentType: .pdf)` so Quick
   Look and "Save to Files" appear in the share sheet. The `.md` export uses
-  `FileRepresentation(contentType: .plainText)` and writes a `StudyNotes.md` temp file. The
-  "Share .md" button sits next to "Create PDF" and is disabled when the editor is empty.
+  `FileRepresentation(contentType: .plainText)` and writes a `StudyNotes.md` temp file.
 - Supported block syntax: headings (levels 1-3), paragraphs, bullet lists (`-`, `*`), numbered
   lists, fenced code blocks. Text after the opening fence is currently ignored, so the language
   tag is not stored yet.
-- Inline markup inside any block: `**bold**`, `*italic*`, `***bold-italic***`, `` `code` ``.
-  Unmatched markers are kept as plain text. `InlineSpan` holds the styled runs, and text-bearing
-  `NoteBlock` cases carry `[InlineSpan]`.
-- Formulas: `$$...$$` on its own line is parsed as `.formula(latex:)` and rendered by SwiftMath
-  (`MTMathImage.asImage()`) as an image embedded with `NSTextAttachment`, centered in the PDF.
-  Invalid LaTeX falls back to the raw `$$...$$` text. Inline `$...$` is not supported yet.
+- Inline markup inside any block: `**bold**`, `*italic*`, `***bold-italic***`, `` `code` ``,
+  and `$...$` inline formulas. Unmatched markers are kept as plain text. `InlineSpan` holds the
+  styled runs, including `.inlineFormula(String)`.
+- Formulas: `$$...$$` on its own line → `.formula(latex:)` block, rendered centered by SwiftMath
+  in preview and PDF. `$...$` inline → `.inlineFormula(String)`, rendered with
+  `MTMathImage(labelMode: .text)`. Preview uses `Text(Image(uiImage:))` concatenation;
+  PDF uses `NSTextAttachment` with scaled bounds. `$$` prefix/lookbehind guards prevent
+  collision with block formulas. Invalid LaTeX falls back to the raw `$...$` text.
 - Code blocks use `.backgroundColor` (`NSTextBlock` is AppKit-only, not available on iOS).
-- `PDFGenerator.bodyFontSize` and `.margin` are configurable in code (no UI yet). Heading sizes
-  scale from the body size.
-- 58 Swift Testing tests (parser and PDF generator) pass.
+- **`PDFGenerator.bodyFontSize` and `.margin`** are set via `FormattingProfile` from the editor.
+  Heading sizes always scale from `bodyFontSize`.
+- **`FormattingProfile`:** `nonisolated` enum with `.standard` (12 pt / 50 pt margin),
+  `.lecture` (14 pt / 40 pt), `.compact` (10 pt / 35 pt). `NoteEditorView` holds
+  `@State private var formattingProfile: FormattingProfile = .standard`. The "Aa" toolbar button
+  (`textformat.size`) opens a half-sheet picker for all note types.
+- 76 Swift Testing tests pass (5 new inline-formula parser tests, 1 updated formula test).
 
 To verify: formula images are bitmaps, so check that they stay sharp when the PDF is zoomed.
 SwiftMath support for chemistry notation (such as `\ce{}`) is unverified. Check before promising it.
@@ -143,8 +148,9 @@ SwiftMath support for chemistry notation (such as `\ce{}`) is unverified. Check 
   ("Recent") and all folders with counts ("Folders"). Compose button (top-right toolbar,
   `square.and.pencil`, `Cmd+N`) and search/settings placeholder buttons. "New folder" text
   button in the Folders section header.
-- **Models:** `Note` (id, text, folderId, dates; `title` computed from first line) and
-  `Folder` (id, name, isInbox). Both plain structs (`nonisolated`, `Sendable`).
+- **Models:** `Note` (id, name?, noteType, text, folderId, dates; `title` computed from name or
+  first line), `Folder` (id, name, isInbox), `NoteType` (.pdf / .markdown),
+  `FormattingProfile` (.standard / .lecture / .compact). All `nonisolated`, `Sendable`.
 - **Storage layer:** `NoteRepository` protocol + `InMemoryNoteRepository` (class, holds data
   in dictionaries). `InMemoryNoteRepository.withSampleData()` has 7 notes in Cyrillic and
   English and 3 folders including a long Cyrillic folder name.
@@ -152,10 +158,15 @@ SwiftMath support for chemistry notation (such as `\ce{}`) is unverified. Check 
   a default parameter value; callers must call `refresh()` after construction (views via
   `.onAppear`, tests explicitly).
 - **`NoteEditorView`:** editor pushed from `HomeView`'s NavigationStack; no own NavigationStack;
-  saves via `.onDisappear { onSave(text) }`. Keyboard focus on appear via `@FocusState`.
-- **`HomeDestination` enum:** `Hashable`, two cases: `.newNote` and `.existingNote(Note)`.
-  Used as the typed path element for `NavigationStack(path:)`.
-- 68 Swift Testing tests pass (10 new HomeViewModel tests).
+  saves via `.onDisappear { onSave(name, text) }`. Keyboard focus on appear via `@FocusState`.
+  PDF notes: title field + text editor + ▶ play button (generates, saves, shows Quick Look).
+  Markdown notes: title field + Edit/Preview picker + share menu (.md + Generate PDF option).
+  Both types have the "Aa" formatting profile button.
+- **`HomeDestination` enum:** `Hashable`, two cases: `.newNote(type:defaultName:)` and
+  `.existingNote(Note)`.
+- **`PDFSheetView`:** NavigationStack sheet wrapping `PDFKitView` (UIViewRepresentable for PDFKit).
+  Has Done and ShareLink toolbar buttons.
+- 76 Swift Testing tests pass.
 - `docs/decisions.md` created with start-page decision entries.
 
 Not built yet: notes list and storage, folders and tags, search, live preview,

@@ -125,7 +125,30 @@ struct PDFGenerator {
         paragraphStyle: NSMutableParagraphStyle
     ) -> NSAttributedString {
         let result = NSMutableAttributedString()
+        appendInlineSpans(spans, to: result, fontSize: fontSize,
+                          baseBold: baseBold, paragraphStyle: paragraphStyle)
+        result.append(NSAttributedString(string: "\n", attributes: [
+            .font: UIFont.systemFont(ofSize: fontSize),
+            .foregroundColor: Self.textColor,
+            .paragraphStyle: paragraphStyle,
+        ]))
+        return result
+    }
+
+    /// Appends all spans to `result`, handling `.inlineFormula` as an `NSTextAttachment`.
+    private func appendInlineSpans(
+        _ spans: [InlineSpan],
+        to result: NSMutableAttributedString,
+        fontSize: CGFloat,
+        baseBold: Bool,
+        paragraphStyle: NSMutableParagraphStyle
+    ) {
         for span in spans {
+            if case .inlineFormula(let latex) = span {
+                result.append(inlineFormulaAttachment(latex: latex, fontSize: fontSize,
+                                                      paragraphStyle: paragraphStyle))
+                continue
+            }
             var attrs: [NSAttributedString.Key: Any] = [
                 .font: spanFont(span, size: fontSize, baseBold: baseBold),
                 .foregroundColor: Self.textColor,
@@ -134,12 +157,40 @@ struct PDFGenerator {
             if case .inlineCode = span { attrs[.backgroundColor] = Self.codeBackground }
             result.append(NSAttributedString(string: span.rawText, attributes: attrs))
         }
-        result.append(NSAttributedString(string: "\n", attributes: [
-            .font: UIFont.systemFont(ofSize: fontSize),
-            .foregroundColor: Self.textColor,
-            .paragraphStyle: paragraphStyle,
-        ]))
-        return result
+    }
+
+    /// Renders a `$...$` inline formula as an `NSTextAttachment` sized to match the surrounding text.
+    private func inlineFormulaAttachment(
+        latex: String,
+        fontSize: CGFloat,
+        paragraphStyle: NSMutableParagraphStyle
+    ) -> NSAttributedString {
+        let mathImage = MTMathImage(latex: latex,
+                                    fontSize: fontSize * 1.1,
+                                    textColor: Self.textColor,
+                                    labelMode: .text,
+                                    textAlignment: .center)
+        let (_, image) = mathImage.asImage()
+        guard let image else {
+            return NSAttributedString(string: "$\(latex)$", attributes: [
+                .font: italicFont(ofSize: fontSize),
+                .foregroundColor: Self.textColor,
+                .paragraphStyle: paragraphStyle,
+            ])
+        }
+        // Scale the formula image so its height matches the text line height.
+        // A negative y-offset aligns the bottom of the attachment with the text baseline.
+        let targetHeight = fontSize * 1.4
+        let scale = targetHeight / image.size.height
+        let attachment = NSTextAttachment()
+        attachment.bounds = CGRect(x: 0, y: -(fontSize * 0.25),
+                                   width: (image.size.width * scale).rounded(),
+                                   height: (image.size.height * scale).rounded())
+        attachment.image = image
+        let attachStr = NSMutableAttributedString(attachment: attachment)
+        attachStr.addAttribute(.paragraphStyle, value: paragraphStyle,
+                                range: NSRange(location: 0, length: attachStr.length))
+        return attachStr
     }
 
     private func spanFont(_ span: InlineSpan, size: CGFloat, baseBold: Bool) -> UIFont {
@@ -154,6 +205,9 @@ struct PDFGenerator {
             return boldItalicFont(ofSize: size)
         case .inlineCode:
             return .monospacedSystemFont(ofSize: max(size - 1, 8), weight: baseBold ? .semibold : .regular)
+        case .inlineFormula:
+            // Not reached — inlineFormula is handled via NSTextAttachment in appendInlineSpans.
+            return UIFont.systemFont(ofSize: size)
         }
     }
 
@@ -179,15 +233,8 @@ struct PDFGenerator {
                     .paragraphStyle: style,
                 ]
             ))
-            for span in item {
-                var attrs: [NSAttributedString.Key: Any] = [
-                    .font: spanFont(span, size: bodyFontSize, baseBold: false),
-                    .foregroundColor: Self.textColor,
-                    .paragraphStyle: style,
-                ]
-                if case .inlineCode = span { attrs[.backgroundColor] = Self.codeBackground }
-                result.append(NSAttributedString(string: span.rawText, attributes: attrs))
-            }
+            appendInlineSpans(item, to: result, fontSize: bodyFontSize,
+                              baseBold: false, paragraphStyle: style)
             result.append(NSAttributedString(string: "\n", attributes: [
                 .font: UIFont.systemFont(ofSize: bodyFontSize),
                 .foregroundColor: Self.textColor,
