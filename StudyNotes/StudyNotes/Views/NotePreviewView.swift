@@ -13,6 +13,19 @@ import SwiftMath
 struct NotePreviewView: View {
     let blocks: [NoteBlock]
 
+    @Environment(\.colorScheme) private var colorScheme
+
+    // Approximate point sizes at the default Dynamic Type size, used by SwiftMath
+    // to render inline formula images at the right scale for each block kind.
+    private let bodyFontSize: CGFloat = 17
+    private func headingFontSize(level: Int) -> CGFloat {
+        switch level {
+        case 1:  return 28
+        case 2:  return 22
+        default: return 20
+        }
+    }
+
     var body: some View {
         if blocks.isEmpty {
             emptyState
@@ -48,11 +61,11 @@ struct NotePreviewView: View {
     private func blockView(for block: NoteBlock) -> some View {
         switch block {
         case .heading(let level, let spans):
-            Text(inlineString(spans, font: headingFont(level: level)))
+            inlineText(spans, font: headingFont(level: level), fontSize: headingFontSize(level: level))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
         case .paragraph(let spans):
-            Text(inlineString(spans, font: .body))
+            inlineText(spans, font: .body, fontSize: bodyFontSize)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
         case .bulletList(let items):
@@ -60,7 +73,7 @@ struct NotePreviewView: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     HStack(alignment: .top, spacing: 8) {
                         Text("•").frame(minWidth: 12, alignment: .leading)
-                        Text(inlineString(item, font: .body))
+                        inlineText(item, font: .body, fontSize: bodyFontSize)
                     }
                 }
             }
@@ -71,7 +84,7 @@ struct NotePreviewView: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { i, item in
                     HStack(alignment: .top, spacing: 8) {
                         Text("\(i + 1).").frame(minWidth: 20, alignment: .leading)
-                        Text(inlineString(item, font: .body))
+                        inlineText(item, font: .body, fontSize: bodyFontSize)
                     }
                 }
             }
@@ -91,36 +104,49 @@ struct NotePreviewView: View {
         }
     }
 
-    // MARK: - Inline text via AttributedString
+    // MARK: - Inline text
 
-    /// Builds an AttributedString from inline spans with correct font per run.
+    /// Concatenates spans into a single `Text` by calling `+` on individually styled sub-texts.
     ///
-    /// Why AttributedString instead of Text + concatenation:
-    /// Text("x").bold() + Text("y") works, but applying .font() to the
-    /// concatenated Text overrides the per-span bold/italic. With AttributedString,
-    /// each run's font is set directly — no outer modifier can interfere.
-    ///
-    /// Font.bold() / .italic() are Font instance methods available from iOS 16.
-    private func inlineString(_ spans: [InlineSpan], font: Font) -> AttributedString {
-        var result = AttributedString()
-        for span in spans {
-            var part = AttributedString(span.rawText)
-            switch span {
-            case .text:
-                part.font = font
-            case .bold:
-                part.font = font.bold()
-            case .italic:
-                part.font = font.italic()
-            case .boldItalic:
-                part.font = font.bold().italic()
-            case .inlineCode:
-                part.font = Font.body.monospaced()
-                part.backgroundColor = Color(UIColor.systemGray5)
+    /// Why Text concatenation instead of a single AttributedString:
+    /// `.inlineFormula` spans need to be rendered as `Text(Image(...))`, which requires
+    /// a `Text` operand. `AttributedString` has no image-attachment support in SwiftUI.
+    /// Each sub-Text gets its own `.font()` modifier *before* concatenation, so no outer
+    /// modifier can override per-span styles.
+    private func inlineText(_ spans: [InlineSpan], font: Font, fontSize: CGFloat) -> Text {
+        spans.reduce(Text("")) { $0 + spanText($1, font: font, fontSize: fontSize) }
+    }
+
+    private func spanText(_ span: InlineSpan, font: Font, fontSize: CGFloat) -> Text {
+        switch span {
+        case .text(let s):
+            return Text(s).font(font)
+        case .bold(let s):
+            return Text(s).font(font.bold())
+        case .italic(let s):
+            return Text(s).font(font.italic())
+        case .boldItalic(let s):
+            return Text(s).font(font.bold().italic())
+        case .inlineCode(let s):
+            // AttributedString.backgroundColor is supported in SwiftUI Text (iOS 15+)
+            // and survives Text concatenation as long as no outer .font() is applied.
+            var part = AttributedString(s)
+            part.font = Font.body.monospaced()
+            part.backgroundColor = Color(UIColor.systemGray5)
+            return Text(part)
+        case .inlineFormula(let latex):
+            let textColor: UIColor = colorScheme == .dark ? .white : .black
+            let mathImage = MTMathImage(latex: latex,
+                                        fontSize: fontSize,
+                                        textColor: textColor,
+                                        labelMode: .text,
+                                        textAlignment: .center)
+            let (_, image) = mathImage.asImage()
+            if let image {
+                return Text(Image(uiImage: image))
             }
-            result.append(part)
+            return Text("$\(latex)$").font(font.italic()).foregroundColor(.secondary)
         }
-        return result
     }
 
     private func headingFont(level: Int) -> Font {

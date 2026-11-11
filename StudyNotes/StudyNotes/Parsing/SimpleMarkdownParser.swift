@@ -7,7 +7,8 @@ import Foundation
 
 /// Parses a small markdown subset: `#` headings (levels 1–3), paragraphs,
 /// `- ` / `* ` bullet lists, `1. ` numbered lists, ``` code blocks,
-/// and inline `**bold**`, `*italic*`, `***bold-italic***`, `` `code` ``.
+/// inline `**bold**`, `*italic*`, `***bold-italic***`, `` `code` ``,
+/// and inline `$...$` math formulas.
 nonisolated struct SimpleMarkdownParser: NoteParser {
     private static let fence = "```"
 
@@ -107,7 +108,7 @@ nonisolated struct SimpleMarkdownParser: NoteParser {
 
     // MARK: - Inline parsing
 
-    /// Splits `text` into styled spans by scanning for `***`, `**`, `*`, and `` ` `` markers.
+    /// Splits `text` into styled spans by scanning for `***`, `**`, `*`, `` ` ``, and `$` markers.
     /// Unmatched or unclosed markers are treated as plain text.
     func parseInline(_ text: String) -> [InlineSpan] {
         var spans: [InlineSpan] = []
@@ -138,12 +139,41 @@ nonisolated struct SimpleMarkdownParser: NoteParser {
                 flushPlain(upTo: i)
                 spans.append(.inlineCode(content))
                 i = after; plainStart = i
+            } else if let (content, after) = matchInlineFormula(text, at: i) {
+                flushPlain(upTo: i)
+                spans.append(.inlineFormula(content))
+                i = after; plainStart = i
             } else {
                 i = text.index(after: i)
             }
         }
         flushPlain(upTo: text.endIndex)
         return spans
+    }
+
+    /// Matches a `$...$` inline formula at `index`.
+    ///
+    /// Rules that prevent collisions with `$$...$$` block formulas:
+    /// - The `$` at `index` must not be preceded by another `$` (lookbehind).
+    /// - The character immediately after `$` must not be `$` (prevents opening `$$`).
+    /// - Content between the delimiters must be non-empty.
+    private func matchInlineFormula(
+        _ text: String,
+        at index: String.Index
+    ) -> (content: String, after: String.Index)? {
+        guard text[index] == "$" else { return nil }
+        // Lookbehind: reject the second `$` in `$$`.
+        if index > text.startIndex {
+            let prev = text.index(before: index)
+            if text[prev] == "$" { return nil }
+        }
+        let afterOpen = text.index(after: index)
+        // Opening lookahead: reject `$$` prefix.
+        guard afterOpen < text.endIndex, text[afterOpen] != "$" else { return nil }
+        guard let closeIdx = text[afterOpen...].firstIndex(of: "$"),
+              closeIdx > afterOpen
+        else { return nil }
+        return (String(text[afterOpen..<closeIdx]), text.index(after: closeIdx))
     }
 
     /// Returns the content between `open` and the next `close` that follows it,

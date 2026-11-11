@@ -55,6 +55,8 @@ struct NoteEditorView: View {
     @State private var pdfURL: URL?
     @State private var showPDFPreview = false
     @State private var errorMessage: String?
+    @State private var formattingProfile: FormattingProfile = .standard
+    @State private var showProfilePicker = false
 
     private enum FocusField { case title, content }
     @FocusState private var focusedField: FocusField?
@@ -110,6 +112,9 @@ struct NoteEditorView: View {
                 PDFSheetView(url: url)
             }
         }
+        .sheet(isPresented: $showProfilePicker) {
+            profilePickerSheet
+        }
         // Any edit invalidates the cached PDF — the user must regenerate.
         .onChange(of: text) { _ in pdfURL = nil }
         .onAppear {
@@ -139,6 +144,13 @@ struct NoteEditorView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .navigationBarTrailing) {
+            // "Aa" button opens the PDF formatting profile picker.
+            // Both note types can generate a PDF, so the button appears for both.
+            Button { showProfilePicker = true } label: {
+                Image(systemName: "textformat.size")
+            }
+            .accessibilityLabel("PDF format")
+
             if noteType == .pdf {
                 // Share button appears only after a PDF has been generated.
                 if let url = pdfURL {
@@ -177,6 +189,44 @@ struct NoteEditorView: View {
         }
     }
 
+    // MARK: - Profile picker sheet
+
+    private var profilePickerSheet: some View {
+        NavigationStack {
+            List {
+                ForEach(FormattingProfile.allCases) { profile in
+                    Button {
+                        formattingProfile = profile
+                        showProfilePicker = false
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(profile.name)
+                                    .foregroundColor(.primary)
+                                Text(profile.description)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            if formattingProfile == profile {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(.accentColor)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("PDF Format")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showProfilePicker = false }
+                }
+            }
+        }
+        .presentationDetents([.fraction(0.4)])
+    }
+
     // MARK: - Content
 
     @ViewBuilder
@@ -213,8 +263,11 @@ struct NoteEditorView: View {
         let title = noteName.trimmingCharacters(in: .whitespacesAndNewlines)
         let fileName = title.isEmpty ? "Note" : title
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        var generator = PDFGenerator()
+        generator.bodyFontSize = formattingProfile.bodyFontSize
+        generator.margin = formattingProfile.margin
         do {
-            pdfURL = try PDFGenerator().writePDF(from: blocks, named: "\(fileName).pdf", in: docs)
+            pdfURL = try generator.writePDF(from: blocks, named: "\(fileName).pdf", in: docs)
             if showPreview { showPDFPreview = true }
         } catch {
             errorMessage = error.localizedDescription

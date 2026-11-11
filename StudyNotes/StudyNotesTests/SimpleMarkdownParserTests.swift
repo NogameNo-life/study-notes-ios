@@ -268,9 +268,9 @@ struct SimpleMarkdownParserTests {
         #expect(parser.parse("$$$$") == [.paragraph([.text("$$$$")])])
     }
 
-    @Test func singleDollarIsNotAFormula() {
-        // Inline `$...$` is not supported at the block level.
-        #expect(parser.parse("$E = mc^2$") == [.paragraph([.text("$E = mc^2$")])])
+    @Test func singleDollarProducesInlineFormula() {
+        // $...$ is now parsed as an inline formula inside a paragraph.
+        #expect(parser.parse("$E = mc^2$") == [.paragraph([.inlineFormula("E = mc^2")])])
     }
 
     @Test func formulaSeparatedFromSurroundingBlocksByBlankLines() {
@@ -294,5 +294,47 @@ struct SimpleMarkdownParserTests {
     @Test func cyrillicFormulaLabel() {
         // A formula can contain arbitrary LaTeX — the parser does not validate its content.
         #expect(parser.parse("$$\\text{Привет}$$") == [.formula(latex: "\\text{Привет}")])
+    }
+
+    // MARK: - Inline formulas
+
+    @Test func inlineFormulaInSurroundingText() {
+        #expect(parser.parse("Mass-energy: $E=mc^2$ is famous.") == [.paragraph([
+            .text("Mass-energy: "),
+            .inlineFormula("E=mc^2"),
+            .text(" is famous."),
+        ])])
+    }
+
+    @Test func doubleDolorInlineIsNotInlineFormula() {
+        // $$ within a line does not match as inline formula:
+        // the opening $ has the next char also being $ → skipped by the lookahead guard.
+        #expect(parser.parse("Here $$x$$ end.") == [.paragraph([.text("Here $$x$$ end.")])])
+    }
+
+    @Test func inlineFormulaNextToBoldSpan() {
+        #expect(parser.parse("**Result**: $x^2$") == [.paragraph([
+            .bold("Result"),
+            .text(": "),
+            .inlineFormula("x^2"),
+        ])])
+    }
+
+    @Test func multipleInlineFormulasInOneLine() {
+        #expect(parser.parse("Let $a$ and $b$ be real.") == [.paragraph([
+            .text("Let "),
+            .inlineFormula("a"),
+            .text(" and "),
+            .inlineFormula("b"),
+            .text(" be real."),
+        ])])
+    }
+
+    @Test func cyrillicTextWithInlineFormula() {
+        #expect(parser.parse("Формула $E=mc^2$ важна.") == [.paragraph([
+            .text("Формула "),
+            .inlineFormula("E=mc^2"),
+            .text(" важна."),
+        ])])
     }
 }
